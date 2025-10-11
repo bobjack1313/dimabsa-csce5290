@@ -22,6 +22,7 @@ We use **PyTorch** and **Hugging Face Transformers** to train and evaluate model
 
 ### **Repository Structure**
 
+```
 dimabsa-course/
 │
 ├── data/ # Datasets (ignored in git)
@@ -33,7 +34,7 @@ dimabsa-course/
 ├── LICENSE
 ├── .gitignore
 └── README.md
-
+```
 
 ---
 
