@@ -4,7 +4,12 @@ version = "0.1.0"
 description = "DimABSA term project package"
 readme = "README.md"
 requires-python = ">=3.10"
-dependencies = ["torch"]
+dependencies = [
+	"torch",
+	 "transformers",
+	 "datasets",
+	 "scikit-learn",
+	 "matplotlib" ]
 
 [project.optional-dependencies]
 dev = ["pytest", "ipykernel"]
