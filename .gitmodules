@@ -1,0 +1,3 @@
+[submodule "external/DimABSA2026"]
+	path = external/DimABSA2026
+	url = https://github.com/bobjack1313/DimABSA2026.git
