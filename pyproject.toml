@@ -1,0 +1,14 @@
+[project]
+name = "dimabsa"
+version = "0.1.0"
+description = "DimABSA term project package"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["torch"]
+
+[project.optional-dependencies]
+dev = ["pytest", "ipykernel"]
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"

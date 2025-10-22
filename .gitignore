@@ -64,3 +64,13 @@ api_keys.json
 # --- Colab drive links ---
 drive/
 gdrive/
+
+# --- Build artifacts ---
+*.egg-info/
+__pycache__/
+.DS_Store
+.env
+.venv/
+build/
+dist/
+
