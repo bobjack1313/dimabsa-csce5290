@@ -1,6 +1,6 @@
 import json
 from pathlib import Path
-from scripts.stage_data import load_jsonl
+from scripts.stage_data import load_jsonl,  write_jsonl
 import pytest
 
 
@@ -124,7 +124,6 @@ def test_load_jsonl_empty_file(tmp_path):
     assert load_jsonl(file_path) == []
 
 
-
 def test_load_jsonl_skips_bad_lines(tmp_path):
     content = '\n'.join([
         '{"ID": "ok1"}',
@@ -135,7 +134,6 @@ def test_load_jsonl_skips_bad_lines(tmp_path):
     file_path.write_text(content, encoding="utf-8")
     records = load_jsonl(file_path)
     assert [r["ID"] for r in records] == ["ok1", "ok2"]
-
 
 
 def test_load_jsonl_file_not_found():
@@ -152,4 +150,58 @@ def test_load_jsonl_with_unicode(tmp_path):
     assert result[0]["Text"].startswith("café")
 
 
+def test_write_jsonl_creates_file_and_writes(tmp_path: Path):
+    """Should create the file and correctly write all JSON objects."""
+    samples = [
+        {"ID": "1", "Text": "First sample"},
+        {"ID": "2", "Text": "Second sample"},
+    ]
+    out_file = tmp_path / "out" / "samples.jsonl"
+
+    # Act
+    write_jsonl(samples, out_file)
+
+    # Assert: file should exist and contain two valid JSON lines
+    assert out_file.exists()
+    lines = out_file.read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 2
+    parsed = [json.loads(line) for line in lines]
+    assert parsed == samples
+
+
+def test_write_jsonl_overwrites_existing(tmp_path: Path):
+    """Should overwrite existing files, not append."""
+    path = tmp_path / "data.jsonl"
+    path.write_text('{"old": "data"}\n', encoding="utf-8")
+
+    samples = [{"id": "new"}]
+    write_jsonl(samples, path)
+
+    content = path.read_text(encoding="utf-8").strip()
+    assert content == json.dumps(samples[0], ensure_ascii=False)
+
+
+def test_write_jsonl_creates_parent_dirs(tmp_path: Path):
+    """Should automatically create parent directories if missing."""
+    nested_path = tmp_path / "deep" / "nested" / "output.jsonl"
+    samples = [{"msg": "hello"}]
+
+    write_jsonl(samples, nested_path)
+
+    assert nested_path.exists()
+    data = json.loads(nested_path.read_text(encoding="utf-8").strip())
+    assert data["msg"] == "hello"
+
+
+def test_write_jsonl_handles_unicode(tmp_path: Path):
+    """Should correctly handle UTF-8 and special characters."""
+    samples = [{"text": "café — naïve emoji 😊"}]
+    path = tmp_path / "unicode.jsonl"
+
+    write_jsonl(samples, path)
+
+    text = path.read_text(encoding="utf-8")
+    assert "😊" in text
+    obj = json.loads(text)
+    assert obj["text"].startswith("café")
 

@@ -60,7 +60,7 @@ def load_jsonl(path: Path) -> list[dict]:
         list[dict]: A list of parsed JSON objects.
     '''
 
-    examples = []
+    samples = []
     with path.open("r", encoding="utf-8") as open_file:
 
         for line in open_file:
@@ -71,11 +71,37 @@ def load_jsonl(path: Path) -> list[dict]:
                 continue
             try:
                 # Parse each line as an independent JSON object
-                examples.append(json.loads(line))
+                samples.append(json.loads(line))
             except json.JSONDecodeError as ex:
                 # Log a warning and continue on malformed lines
                 print(f"[WARN] Skipping bad JSON line in {path.name}: {ex}")
-    return examples
+    return samples
 
+
+
+def write_jsonl(samples: list[dict], out_file: Path) -> None:
+    '''
+    Write a list of JSON-serializable objects to a JSON Lines (.jsonl) file.
+
+    Each dictionary in `samples` is serialized to a single line of JSON.
+    The parent directory is created automatically if it does not exist.
+
+    Args:
+        samples (list[dict]): List of JSON-serializable objects to write.
+        out_file (Path): Destination path for the .jsonl file.
+
+    Returns:
+        None
+    '''
+    # Check dir and file exists
+    out_file.parent.mkdir(parents=True, exist_ok=True)
+
+    # Open file for write
+    with out_file.open("w", encoding="utf-8") as ofile:
+        for obj in samples:
+            ofile.write(json.dumps(obj, ensure_ascii=False) + "\n")
+
+    # Display confirmation
+    print(f"Wrote {out_file}  ({len(samples)} records)")
 
 
