@@ -28,6 +28,7 @@ dimabsa-course/
 ├── data/ # Datasets (ignored in git)
 ├── src/ # Core model and training scripts
 ├── notebooks/ # Colab notebooks for experimentation
+├── tests/ # Unit tests for scripts or src files
 ├── experiments/ # Saved configs, model notes
 ├── outputs/ # Predictions, logs, metrics (ignored in git)
 │
@@ -55,6 +56,17 @@ Clone the project
 git clone git@github.com:bobjack1313/dimabsa-csce5290.git
 cd dimabsa-csce5290
 ```
+
+To get forked dataset for this project - This drops the source sample files in place.
+```
+git submodule update --init --recursive
+```
+
+You should now have:
+```
+external/DimABSA2026/task-dataset/track_a/
+```
+
 Use homebrew for setup (Mac), make sure it's up to date
 Apple Silicon (arm64)
 ```eval "$(/opt/homebrew/bin/brew shellenv)"```
@@ -79,10 +91,8 @@ It is best to close the terminal and start new shell
 
 Create Project environment
 ```
-conda create -y -n nlp5290 python=3.11
+conda env create -f environment.yaml
 conda activate nlp5290
-conda info --envs
-python -V
 ```
 This allows existing notebook to run If we need to use this
 ```
@@ -105,12 +115,9 @@ print("MPS available:", torch.backends.mps.is_available())
 PY
 ```
 
-Install project editable and dev dependancies
-```pip install -e ".[dev]"```
-
 Run tests
 ```
-pytest -q                      # should pass
+pytest -q    # should pass
 python scripts/train.py --epochs 3
 python scripts/eval.py --ckpt experiments/checkpoints/simple.pt
 ```
@@ -124,33 +131,38 @@ conda activate nlp5290
  - Put real code in src/dimabsa/ (e.g., dataset.py, model.py, train_loop.py).
  - Keep scripts/ for CLIs that call into the modules (e.g., scripts/train.py, scripts/eval.py).
 
-Run training/eval from CLI
+Stage the dataset (copies into /data/raw/)
 ```
-python scripts/train.py --epochs 3
-python scripts/eval.py --ckpt experiments/checkpoints/simple.pt
-```
-Once the real dataset is wired in, this will change to:
-```
-python scripts/train.py --train data/train.jsonl --valid data/valid.jsonl --epochs 5 --batch-size 32
+python scripts/stage_data.py
 ```
 
-For continual testing
-```pytest```
-
-Additional project setup Added to toml, so I dont know if this will be needed manually
-```pip install transformers datasets scikit-learn matplotlib```
-
-Downloads and tests data
+Prepare the processed datasets
 ```
-python scripts/download_data.py --hf yelp_polarity --train-split train --valid-split test --skip-test
-
-```
-Direct download option
-```
-python scripts/download_data.py --url https://example.com/dataset.zip
+python scripts/prepare_datasets.py
 ```
 
-To get forked dataset for this project
+This generates:
 ```
-git submodule update --init --recursive
+data/processed/task1/train.jsonl
+data/processed/task1/valid.jsonl
+data/processed/task2/train.jsonl
+data/processed/task2/valid.jsonl
 ```
+
+Training:
+You now train per-task:
+```
+python scripts/train.py --task task1 --epochs 3
+```
+
+```
+python scripts/train.py --task task2 --epochs 3
+```
+
+Models are saved under:
+```
+experiments/checkpoints/task1/bert_final/
+experiments/checkpoints/task2/bert_final/
+```
+
+Evaluations are in progress
