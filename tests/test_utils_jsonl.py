@@ -1,61 +1,85 @@
 import json
 from pathlib import Path
-from scripts.stage_data import load_jsonl,  write_jsonl
+from scripts.utils_jsonl import parse_stream_jsonl,  write_jsonl
 import pytest
 
 
-def test_load_jsonl_reads_valid_lines(tmp_path: Path):
-    """Should correctly parse valid JSON lines and skip invalid or blank ones."""
-    # Arrange: build a temporary .jsonl file
+def test_parse_stream_jsonl_reads_valid_lines(tmp_path: Path):
+    # Arrange
     sample_lines = [
-        json.dumps({"id": 1, "text": "batches"}),
-        "",  # blank line
-        "{bad json}",  # malformed
-        json.dumps({"id": 2, "text": "many"})
+        json.dumps({"id": 1}),
+        "",
+        "{bad json}",
+        json.dumps({"id": 2}),
     ]
     file_path = tmp_path / "sample.jsonl"
     file_path.write_text("\n".join(sample_lines), encoding="utf-8")
 
-    # Act
-    examples = load_jsonl(file_path)
+    # Act — consume generator
+    records = list(parse_stream_jsonl(file_path))
 
     # Assert
-    assert isinstance(examples, list)
-    assert examples == [
-        {"id": 1, "text": "batches"},
-        {"id": 2, "text": "many"}
-    ]
+    assert records == [{"id": 1}, {"id": 2}]
 
 
-def test_load_jsonl_handles_varied_schema(tmp_path):
-    """Should load records even when schema differs across entries."""
+def test_parse_stream_jsonl_empty_file(tmp_path: Path):
+    path = tmp_path / "empty.jsonl"
+    path.write_text("", encoding="utf-8")
+
+    records = list(parse_stream_jsonl(path))
+
+    assert records == []
+
+
+def test_parse_stream_jsonl_unicode(tmp_path: Path):
+    sample = {"text": "café — naïve 😊"}
+    path = tmp_path / "unicode.jsonl"
+    path.write_text(json.dumps(sample), encoding="utf-8")
+
+    out = list(parse_stream_jsonl(path))
+
+    assert out[0]["text"].startswith("café")
+
+
+def test_parse_stream_jsonl_parses_nested_objects(tmp_path: Path):
     samples = [
-        {
-            "ID": "rest26_aspect_va_dev_17",
-            "Text": "They make the donuts fresh with each order",
-            "Aspect": ["donuts"],
-        },
-        {
-            "ID": "rest26_aspect_va_dev_18",
-            "Text": "The staff was very friendly , I will definitely come again",
-            "Aspect": ["staff"],
-        },
+        {"ID": "a", "Quadruplet": [{"Aspect": "x", "VA": "1#1"}]},
+        {"ID": "b", "Quadruplet": [{"Aspect": "y", "VA": "2#2"}]},
     ]
-    path = tmp_path / "varied.jsonl"
-    path.write_text("\n".join(json.dumps(s) for s in samples), encoding="utf-8")
+    file = tmp_path / "nested.jsonl"
+    file.write_text("\n".join(json.dumps(s) for s in samples), encoding="utf-8")
 
-    records = load_jsonl(path)
-    assert len(records) == 2
-    assert all("Text" in r for r in records)
-    # Should not raise KeyError even though Quadruplet missing
-    assert "Quadruplet" not in records[0] or isinstance(records[0].get("Aspect"), list)
+    out = list(parse_stream_jsonl(file))
+
+    assert len(out) == 2
+    assert out[0]["Quadruplet"][0]["Aspect"] == "x"
+    assert out[1]["ID"] == "b"
 
 
-def test_load_jsonl_with_sample_lines(tmp_path: Path):
-    '''
-    Verify that load_jsonl correctly parses realistic dataset examples.
-    '''
-    # Arrange: realistic dataset entries
+def test_parse_stream_jsonl_warns_on_bad_json(tmp_path, capsys):
+    data = [
+        '{"ok": 1}',
+        '{bad json}',  # broken
+        '{"ok": 2}',
+    ]
+    path = tmp_path / "bad.jsonl"
+    path.write_text("\n".join(data), encoding="utf-8")
+
+    out = list(parse_stream_jsonl(path))
+
+    # Consume: should only get valid lines
+    assert out == [{"ok": 1}, {"ok": 2}]
+
+    # Check printed warning
+    captured = capsys.readouterr().out
+    assert "JSON error" in captured
+    assert "line 2" in captured
+
+
+def test_parse_stream_jsonl_with_sample_lines(tmp_path: Path):
+    """
+    Verify that parse_stream_jsonl correctly parses realistic dataset examples.
+    """
     sample_lines = [
         {
             "ID": "laptop_quad_dev_3",
@@ -84,10 +108,13 @@ def test_load_jsonl_with_sample_lines(tmp_path: Path):
     ]
 
     file_path = tmp_path / "sample.jsonl"
-    file_path.write_text("\n".join(json.dumps(line) for line in sample_lines), encoding="utf-8")
+    file_path.write_text(
+        "\n".join(json.dumps(line) for line in sample_lines),
+        encoding="utf-8",
+    )
 
-    # Act
-    examples = load_jsonl(file_path)
+    # Act — consume generator
+    examples = list(parse_stream_jsonl(file_path))
 
     # Assert
     assert isinstance(examples, list)
@@ -97,7 +124,7 @@ def test_load_jsonl_with_sample_lines(tmp_path: Path):
     assert isinstance(examples[0]["Quadruplet"], list)
 
 
-def test_load_jsonl_with_multiple_quadruplets(tmp_path):
+def test_parse_stream_jsonl_with_multiple_quadruplets(tmp_path):
     sample = {
         "ID": "rest16_quad_dev_8",
         "Text": "the food here is rather good , but only if you like to wait for it .",
@@ -106,48 +133,23 @@ def test_load_jsonl_with_multiple_quadruplets(tmp_path):
             {"Aspect": "NULL", "Opinion": "NULL", "Category": "SERVICE#GENERAL", "VA": "5.00#5.00"},
         ],
     }
+
     file_path = tmp_path / "multi.jsonl"
     file_path.write_text(json.dumps(sample), encoding="utf-8")
 
-    records = load_jsonl(file_path)
+    # Act — consume generator
+    records = list(parse_stream_jsonl(file_path))
+
+    # Assert
     assert len(records) == 1
     assert len(records[0]["Quadruplet"]) == 2
     assert records[0]["Quadruplet"][0]["Category"] == "FOOD#QUALITY"
 
 
-def test_load_jsonl_empty_file(tmp_path):
-    '''
-    Verifies against empty file.
-    '''
-    file_path = tmp_path / "empty.jsonl"
-    file_path.write_text("", encoding="utf-8")
-    assert load_jsonl(file_path) == []
-
-
-def test_load_jsonl_skips_bad_lines(tmp_path):
-    content = '\n'.join([
-        '{"ID": "ok1"}',
-        '{bad line}',
-        '{"ID": "ok2"}'
-    ])
-    file_path = tmp_path / "bad.jsonl"
-    file_path.write_text(content, encoding="utf-8")
-    records = load_jsonl(file_path)
-    assert [r["ID"] for r in records] == ["ok1", "ok2"]
-
-
-def test_load_jsonl_file_not_found():
-
+def test_parse_stream_jsonl_file_not_found():
     with pytest.raises(FileNotFoundError):
-        load_jsonl(Path("nonexistent.jsonl"))
+        list(parse_stream_jsonl(Path("nonexistent.jsonl")))
 
-
-def test_load_jsonl_with_unicode(tmp_path):
-    sample = {"ID": "unicode_test", "Text": "café — naïve emoji 😊"}
-    path = tmp_path / "unicode.jsonl"
-    path.write_text(json.dumps(sample), encoding="utf-8")
-    result = load_jsonl(path)
-    assert result[0]["Text"].startswith("café")
 
 
 def test_write_jsonl_creates_file_and_writes(tmp_path: Path):

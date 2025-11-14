@@ -24,9 +24,11 @@
 # Date        : 2025-10-29
 # =============================================================================
 import json
+from pathlib import Path
+from typing import Iterable, Dict
 
 
-def load_jsonl(path: Path) -> list[dict]:
+def parse_stream_jsonl(path: Path) -> Iterable[Dict]:
     '''
     Load a JSON Lines (.jsonl) file into memory.
 
@@ -37,24 +39,20 @@ def load_jsonl(path: Path) -> list[dict]:
         path (Path): Path to the .jsonl file to load.
 
     Returns:
-        list[dict]: A list of parsed JSON objects.
+        Iterable[dict]: An iterable list of parsed JSON objects.
     '''
     samples = []
-    with path.open("r", encoding="utf-8") as open_file:
-
-        for line in open_file:
+    with path.open("r", encoding="utf-8") as file:
+        # Work across each line
+        for idx, line in enumerate(file, 1):
             line = line.strip()
 
             if not line:
-                # Skip empty lines
                 continue
             try:
-                # Parse each line as an independent JSON object
-                samples.append(json.loads(line))
-            except json.JSONDecodeError as ex:
-                # Log a warning and continue on malformed lines
-                print(f"[WARN] Skipping bad JSON line in {path.name}: {ex}")
-    return samples
+                yield json.loads(line)
+            except json.JSONDecodeError as err:
+                print(f"[WARN] JSON error in {path.name} line {idx}: {err}")
 
 
 def write_jsonl(samples: list[dict], out_file: Path) -> None:
