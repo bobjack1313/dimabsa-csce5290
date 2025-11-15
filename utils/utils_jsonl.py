@@ -28,6 +28,37 @@ from pathlib import Path
 from typing import Iterable, Dict
 
 
+def load_jsonl(path: Path):
+    '''
+    Load a JSON Lines (.jsonl) file into a Python list of dictionaries.
+
+    Each line of the file is expected to contain a valid JSON object.
+    This function reads the file line-by-line, converts each line from
+    JSON text into a Python dictionary, and appends it to a results list.
+
+    Notes:
+    - No skipping of blank lines is performed. If the file contains an
+      empty line or whitespace-only line, json.loads() will raise an error.
+    - No error handling is included. Any invalid JSON will cause the
+      function to raise a JSONDecodeError.
+    - If the file does not exist, the Path.open() call will raise a
+      FileNotFoundError naturally.
+
+    Args:
+        path (Path): Filesystem path to the .jsonl file.
+
+    Returns:
+        list[dict]: A list of dictionaries parsed from each JSONL line.
+    '''
+    rows = []
+
+    with path.open("r", encoding="utf-8") as f:
+        for line in f:
+            rows.append(json.loads(line))
+
+    return rows
+
+
 def parse_stream_jsonl(path: Path) -> Iterable[Dict]:
     '''
     Load a JSON Lines (.jsonl) file into memory.

@@ -177,20 +177,18 @@ def parse_va(example):
     Extracts VA regression targets from the example dict.
     If VA is missing, assigns a neutral fallback label tensor.
     '''
-    if "Aspect_VA" in example:
-        va_string = example["Aspect_VA"][0]["VA"]
-        parts = va_string.split("#")
+    g = example.get("VA_gold", {})
+    v = g.get("V")
+    a = g.get("A")
 
-        first_value = float(parts[0])
-        second_value = float(parts[1])
-
-        example["labels"] = torch.tensor([first_value, second_value])
-
-    else:
-        # Default neutral values
+    if v is None or a is None:
+        # Fallback (should be rare — mostly task2 or malformed)
         example["labels"] = torch.tensor([5.0, 5.0])
+    else:
+        example["labels"] = torch.tensor([v, a])
 
     return example
+
 
 
 def main():
@@ -222,7 +220,7 @@ def main():
         learning_rate=args.lr,
         per_device_train_batch_size=args.batch_size,
         num_train_epochs=args.epochs,
-        weight_decay=0.01,
+        weight_decay=0.01,x
         save_total_limit=2,
         logging_dir="logs",
         logging_steps=50,

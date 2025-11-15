@@ -1,6 +1,6 @@
 import json
 from pathlib import Path
-from scripts.utils_jsonl import parse_stream_jsonl,  write_jsonl
+from utils.utils_jsonl import parse_stream_jsonl,  write_jsonl, load_jsonl
 import pytest
 
 
@@ -207,3 +207,55 @@ def test_write_jsonl_handles_unicode(tmp_path: Path):
     obj = json.loads(text)
     assert obj["text"].startswith("café")
 
+
+def test_load_jsonl_single_row(tmp_path):
+    file = tmp_path / "data.jsonl"
+    file.write_text('{"a": 1}\n')
+
+    out = load_jsonl(file)
+
+    assert isinstance(out, list)
+    assert out == [{"a": 1}]
+
+
+def test_load_jsonl_multiple_rows(tmp_path):
+    file = tmp_path / "multi.jsonl"
+    file.write_text(
+        '{"x": 10}\n'
+        '{"y": 20}\n'
+        '{"z": 30}\n'
+    )
+
+    out = load_jsonl(file)
+
+    assert out == [{"x": 10}, {"y": 20}, {"z": 30}]
+    assert len(out) == 3
+
+
+def test_load_jsonl_invalid_json(tmp_path):
+    file = tmp_path / "bad.jsonl"
+    file.write_text(
+        '{"good": true}\n'
+        '{INVALID JSON}\n'
+    )
+
+    with pytest.raises(json.JSONDecodeError):
+        load_jsonl(file)
+
+
+def test_load_jsonl_blank_line_raises(tmp_path):
+    # Your implementation does NOT skip blank lines, so json.loads("") will error.
+    file = tmp_path / "blank.jsonl"
+    file.write_text(
+        '{"ok": 1}\n'
+        '\n'     # this should crash
+        '{"ok2": 2}\n'
+    )
+
+    with pytest.raises(json.JSONDecodeError):
+        load_jsonl(file)
+
+
+def test_load_jsonl_file_not_found():
+    with pytest.raises(FileNotFoundError):
+        load_jsonl(Path("nope_does_not_exist.jsonl"))

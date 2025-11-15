@@ -1,167 +1,212 @@
-# import argparse
-# from pathlib import Path
-# import torch
-# from dimabsa.model import SimpleClassifier
-
-# def main():
-#     ap = argparse.ArgumentParser()
-#     ap.add_argument("--ckpt", type=Path, default=Path("experiments/checkpoints/simple.pt"))
-#     ap.add_argument("--input-dim", type=int, default=16)
-#     ap.add_argument("--hidden-dim", type=int, default=32)
-#     ap.add_argument("--num-classes", type=int, default=3)
-#     args = ap.parse_args()
-
-#     model = SimpleClassifier(args.input_dim, args.hidden_dim, args.num_classes)
-#     # Safe weights-only load (PyTorch 2.5+)
-#     state = torch.load(args.ckpt, map_location="cpu", weights_only=True)
-#     model.load_state_dict(state)
-#     model.eval()
-
-#     with torch.no_grad():
-#         x = torch.randn(4, args.input_dim)
-#         out = model(x)
-
-#     print("logits shape:", tuple(out.shape))
-
-# if __name__ == "__main__":
-#     main()
-
 #!/usr/bin/env python3
-"""
-Evaluate a fine-tuned BERT model on Task 1 (DimASR).
-Loads model checkpoint from experiments/checkpoints/task1/bert_final
-and evaluates against data/processed/task1/valid.jsonl
-"""
+'''
+Evaluation script for both tasks.
 
-# import argparse
-# from pathlib import Path
-# from transformers import BertForSequenceClassification, BertTokenizer, Trainer, TrainingArguments
-# from datasets import load_dataset
+Supports:
 
-# def main():
-#     ap = argparse.ArgumentParser()
-#     ap.add_argument("--model-dir", type=Path, default=Path("experiments/checkpoints/task1/bert_final"))
-#     ap.add_argument("--data-dir", type=Path, default=Path("data/processed/task1"))
-#     ap.add_argument("--batch-size", type=int, default=8)
-#     args = ap.parse_args()
+• Task 1 (DimASR):
+      - Regression model predicts [Valence, Arousal]
+      - Metrics: RMSE + Pearson Correlation
 
-#     # Load tokenizer & model
-#     tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
-#     model = BertForSequenceClassification.from_pretrained(args.model_dir)
+• Task 2 (DimASTE – Simplified):
+      - Regression model predicts triplet count
+      - Metric: RMSE against gold count
 
-#     # Load validation data
-#     data_files = {"valid": str(args.data_dir / "valid.jsonl")}
-#     ds = load_dataset("json", data_files=data_files)
-
-#     def preprocess(batch):
-#         return tokenizer(batch["Text"], padding="max_length", truncation=True, max_length=128)
-#     ds = ds.map(preprocess, batched=True)
-
-#     # Setup evaluation
-#     eval_args = TrainingArguments(
-#         output_dir="eval_output",
-#         per_device_eval_batch_size=args.batch_size,
-#         report_to="none"
-#     )
-
-#     trainer = Trainer(model=model, args=eval_args, eval_dataset=ds["valid"], tokenizer=tokenizer)
-
-#     results = trainer.evaluate()
-#     print("\nEvaluation Results:")
-#     for k, v in results.items():
-#         print(f"{k}: {v:.4f}" if isinstance(v, float) else f"{k}: {v}")
-
-# if __name__ == "__main__":
-#     main()
+Usage:
+    python -m scripts.eval --task task1
+    python -m scripts.eval --task task2
 
 
-
-
-    #!/usr/bin/env python3
-"""
-Evaluate a fine-tuned BERT model on DimABSA Task 1 (DimASR).
-Computes RMSE and Pearson correlation (PCC) for valence and arousal scores.
-"""
+'''
 
 import argparse
-import numpy as np
+import json
 from pathlib import Path
-from transformers import BertForSequenceClassification, BertTokenizer
-from datasets import load_dataset
+
+import numpy as np
+import torch
 from sklearn.metrics import mean_squared_error
 from scipy.stats import pearsonr
-import torch
+from transformers import AutoTokenizer, AutoModelForSequenceClassification
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--model-dir", type=Path, default=Path("experiments/checkpoints/task1/bert_final"))
-    ap.add_argument("--data-dir", type=Path, default=Path("data/processed/task1"))
-    ap.add_argument("--batch-size", type=int, default=8)
-    args = ap.parse_args()
+from utils.utils_jsonl import load_jsonl
 
-    # Load model and tokenizer
-    tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
-    model = BertForSequenceClassification.from_pretrained(args.model_dir)
-    model.eval()
 
-    # Load dataset
-    data_files = {"valid": str(args.data_dir / "valid.jsonl")}
-    ds = load_dataset("json", data_files=data_files)["valid"]
+# Task 1 (DimASR) — Regression: Valence + Arousal
+def eval_task1(model, tokenizer, valid_path: Path):
+    samples = load_jsonl(valid_path)
 
-    # Parse VA values (split "6.75#6.38" -> floats)
-    va_data = []
-    for sample in ds:
-        if "Quadruplet" in sample:
-            for q in sample["Quadruplet"]:
-                try:
-                    v, a = map(float, q["VA"].split("#"))
-                    va_data.append((sample["Text"], v, a))
-                except Exception:
-                    continue
-        elif "VA" in sample:
-            try:
-                v, a = map(float, sample["VA"].split("#"))
-                va_data.append((sample["Text"], v, a))
-            except Exception:
-                continue
-        else:
-            # No gold VA, skip
+    texts = []
+    v_gold = []
+    a_gold = []
+
+    for ex in samples:
+        quads = ex.get("Quadruplet", [])
+        if not quads:
             continue
 
-    if not va_data:
-        print("No valid VA data found in validation file.")
+        va_str = quads[0].get("VA")
+        if not va_str or "#" not in va_str:
+            continue
+
+        try:
+            v, a = map(float, va_str.split("#"))
+        except:
+            continue
+
+        texts.append(ex["Text"])
+        v_gold.append(v)
+        a_gold.append(a)
+
+    if not texts:
+        print("[ERROR] No valid VA labels found in validation file.")
         return
 
-    texts, v_gold, a_gold = zip(*va_data)
-
     # Tokenize
-    inputs = tokenizer(list(texts), padding=True, truncation=True, return_tensors="pt", max_length=128)
+    batch = tokenizer(
+        texts,
+        padding=True,
+        truncation=True,
+        max_length=128,
+        return_tensors="pt"
+    )
 
     # Predict
     with torch.no_grad():
-        outputs = model(**inputs)
-        logits = outputs.logits.squeeze().cpu().numpy()
+        logits = model(**batch).logits.cpu().numpy()
 
-    # If model output is 2D (batch, 2) treat columns as valence and arousal
-    if logits.ndim == 2 and logits.shape[1] >= 2:
-        v_pred, a_pred = logits[:, 0], logits[:, 1]
-    else:
-        # fallback (single-dim model)
-        v_pred = a_pred = logits if logits.ndim == 1 else logits[:, 0]
+    v_pred = logits[:, 0]
+    a_pred = logits[:, 1]
 
-    # Compute metrics
-    v_rmse = mean_squared_error(v_gold, v_pred, squared=False)
-    a_rmse = mean_squared_error(a_gold, a_pred, squared=False)
+    # Metrics
+    v_mse = mean_squared_error(v_gold, v_pred)
+    a_mse = mean_squared_error(a_gold, a_pred)
+
+    v_rmse = v_mse ** 0.5
+    a_rmse = a_mse ** 0.5
+
     v_pcc, _ = pearsonr(v_gold, v_pred)
     a_pcc, _ = pearsonr(a_gold, a_pred)
 
-    print("\nEvaluation Metrics:")
+    print("\n=== Task 1 Evaluation (DimASR Regression) ===")
+    print(f"Samples evaluated: {len(texts)}")
     print(f"Valence RMSE: {v_rmse:.4f}")
     print(f"Arousal RMSE: {a_rmse:.4f}")
     print(f"Valence PCC:  {v_pcc:.4f}")
     print(f"Arousal PCC:  {a_pcc:.4f}")
-    print(f"Samples evaluated: {len(v_gold)}")
 
+
+def eval_task2(model, tokenizer, valid_path: Path):
+    samples = load_jsonl(valid_path)
+
+    texts = []
+    v_gold = []
+    a_gold = []
+
+    for ex in samples:
+        quads = ex.get("Quadruplet", [])
+        if not quads:
+            continue
+
+        va_str = quads[0].get("VA")
+        if not va_str or "#" not in va_str:
+            continue
+
+        try:
+            v, a = map(float, va_str.split("#"))
+        except:
+            continue
+
+        texts.append(ex["Text"])
+        v_gold.append(v)
+        a_gold.append(a)
+
+    if not texts:
+        print("[ERROR] No valid VA labels found in Task 2 validation file.")
+        return
+
+    batch = tokenizer(
+        texts,
+        padding=True,
+        truncation=True,
+        max_length=128,
+        return_tensors="pt"
+    )
+
+    with torch.no_grad():
+        logits = model(**batch).logits.cpu().numpy()
+
+    v_pred = logits[:, 0]
+    a_pred = logits[:, 1]
+
+    v_mse = mean_squared_error(v_gold, v_pred)
+    a_mse = mean_squared_error(a_gold, a_pred)
+
+    v_rmse = v_mse ** 0.5
+    a_rmse = a_mse ** 0.5
+
+    v_pcc, _ = pearsonr(v_gold, v_pred)
+    a_pcc, _ = pearsonr(a_gold, a_pred)
+
+    print("\n=== Task 2 Evaluation (DimASTE – VA Regression) ===")
+    print(f"Samples evaluated: {len(texts)}")
+    print(f"Valence RMSE: {v_rmse:.4f}")
+    print(f"Arousal RMSE: {a_rmse:.4f}")
+    print(f"Valence PCC:  {v_pcc:.4f}")
+    print(f"Arousal PCC:  {a_pcc:.4f}")
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--task", choices=["task1", "task2"], required=True)
+    ap.add_argument("--model-dir", type=Path)
+    ap.add_argument("--data-dir", type=Path)
+    args = ap.parse_args()
+
+    # Default paths
+    if args.model_dir is None:
+        args.model_dir = Path(f"experiments/checkpoints/{args.task}/bert_final")
+    if args.data_dir is None:
+        args.data_dir = Path(f"data/processed/{args.task}/valid.jsonl")
+
+    tokenizer = AutoTokenizer.from_pretrained(args.model_dir)
+    model = AutoModelForSequenceClassification.from_pretrained(args.model_dir)
+    model.eval()
+
+    # Dispatch
+    if args.task == "task1":
+        eval_task1(model, tokenizer, args.data_dir)
+    else:
+        eval_task2(model, tokenizer, args.data_dir)
+
+
+# Entry Point
 if __name__ == "__main__":
     main()
 
+
+
+'''
+Improvements for task 2
+
+We do one of these:
+
+ - first VA only
+
+    Then best-case PCC ~0.4 – 0.6
+    RMSE ~1.0 – 1.5
+
+
+- average VA of all quad labels
+
+    Then PCC usually lower
+    RMSE improves slightly
+    But the model becomes more stable
+
+
+- VA_gold = first quadruplet VA
+or Task-2 VA_gold = mean of all quad VAs
+
+ - train one sample per quadruplet (May give best scores)
+
+'''

@@ -138,7 +138,7 @@ python scripts/stage_data.py
 
 Prepare the processed datasets
 ```
-python scripts/prepare_datasets.py
+python -m scripts/prepare_datasets.py
 ```
 
 This generates:
@@ -165,4 +165,12 @@ experiments/checkpoints/task1/bert_final/
 experiments/checkpoints/task2/bert_final/
 ```
 
-Evaluations are in progress
+Evaluation:
+```
+python scripts/eval.py --task task1
+```
+
+```
+python scripts/eval.py --task task2
+```
+
