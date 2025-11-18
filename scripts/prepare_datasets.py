@@ -2,104 +2,102 @@
 # =============================================================================
 # Script Name : prepare_datasets.py
 # Project     : DimABSA 2026 (CSCE 5290 Term Project)
-#
 # Description :
-#   Build unified, normalized JSONL datasets for both DimABSA Track A tasks.
-#   This script converts the raw "train_alltasks" files into processed
-#   train/valid splits using an 80/20 random partition. These processed
-#   files are the official inputs to our training and evaluation pipeline.
+#   Build clean train / validation splits for Track A, Subtasks 1 and 2
+#   using ONLY the official *train_alltasks* files (which contain gold VA).
 #
-# Tasks Handled :
+#   - We DO NOT use the dev files for splitting, since they do not contain
+#     VA / Quadruplet labels. They are input-only evaluation sets.
 #
-#   • Task 1 (DimASR) — Dimensional Aspect Sentiment Regression
-#       Output files:
-#         - data/processed/task1/train.jsonl
-#         - data/processed/task1/valid.jsonl
-#       Each record contains:
-#         - Text
-#         - Full Quadruplet list
-#         - Extracted VA_gold regression target (V,A)
+# Outputs:
+#   Task 1 (DimASR – regression)
+#       data/processed/task1/train.jsonl
+#       data/processed/task1/valid.jsonl
 #
-#   • Task 2 (DimASTE) — Aspect–Opinion–Valence–Arousal Extraction
-#       Simplified project variant:
-#         - Still uses VA-bearing train_alltasks files
-#         - Produces parallel train/valid splits for Task 2 modeling
-#       Output files:
-#         - data/processed/task2/train.jsonl
-#         - data/processed/task2/valid.jsonl
+#   Task 2 (DimASTE – extraction)
+#       data/processed/task2/train.jsonl
+#       data/processed/task2/valid.jsonl
 #
-# Expected Inputs (after running stage_data.py):
+#   Each output file is a shuffled 80/20 split of the corresponding
+#   *_train_alltasks.jsonl files for laptop + restaurant.
 #
-#   data/raw/task1/
-#       eng_laptop_train_alltasks.jsonl
-#       eng_restaurant_train_alltasks.jsonl
+# Schema (Task 1):
+#   {
+#     "ID": str,
+#     "Text": str,
+#     "Aspect": [str, ...],          # list of aspect strings (may be empty)
+#     "VA_gold": {"V": float|None,
+#                 "A": float|None},  # sentence-level VA used as regression target
+#     "Quadruplet": [
+#         {"Aspect": str,
+#          "Category": str,
+#          "Opinion": str,
+#          "VA": str}
+#     ]
+#   }
 #
-#   data/raw/task2/
-#       eng_laptop_train_alltasks.jsonl
-#       eng_restaurant_train_alltasks.jsonl
+# Schema (Task 2):
+#   {
+#     "ID": str,
+#     "Text": str,
+#     "Quadruplet": [
+#         {"Aspect": str,
+#          "Category": str,
+#          "Opinion": str,
+#          "VA": str}
+#     ]
+#   }
 #
-#   NOTE:
-#       • Dev files from the official dataset do NOT contain Quadruplets
-#         or VA labels, so they cannot be used for validation.
-#       • This script intentionally ignores all dev files for both tasks.
+# Notes:
+#   - For Task 1, we keep the full Quadruplet list but also derive a single
+#     VA_gold value by taking the VA from the *first* quadruplet, when present.
+#     This is the regression target used in our current model.
 #
-# Output Format :
-#     {
-#       "ID": str,
-#       "Text": str,
-#       "Quadruplet": [
-#           { "Aspect": str, "Category": str,
-#             "Opinion": str, "VA": "7.25#6.87" }
-#       ],
-#       "VA_gold": { "V": float or None, "A": float or None }
-#     }
-#
-# Notes :
-#   • This script does not download data.
-#   • It assumes stage_data.py has already copied raw files to data/raw/.
-#   • Normalization is task-specific: Task 1 extracts VA_gold; Task 2
-#     keeps full Quadruplets.
+#   - For Task 2, we do not touch the Quadruplet labels; we simply normalize
+#     them into a consistent list-of-dicts structure.
 #
 # Author      : Amrit Adhikari, Bob Jack — Group 4
-# Last Updated: 2025-11-16
+# Last Updated: 2025-11-17
 # =============================================================================
-
 from __future__ import annotations
 
 import json
 import random
+import sys
 from pathlib import Path
-from typing import Callable, Dict, Iterable, List
+from typing import Dict, Iterable, List, Callable
+
+ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from utils.utils_jsonl import parse_stream_jsonl, write_jsonl
 
-'''
-Dataset setups
-Format A:
-Text
-Aspect
+# '''
+# Dataset setups
+# Format A:
+# Text
+# Aspect
 
-Format B:
-Text
-Quadruplet: [
-    {"Aspect": "...", "VA": "4.33#5.12"}
-]
-----------------
-Task 1 Raw:
-"Quadruplet": [
-  {
-    "Aspect": "unit",
-    "Category": "LAPTOP#DESIGN_FEATURES",
-    "Opinion": "pretty",
-    "VA": "7.12#7.12"
-  }
-]
+# Format B:
+# Text
+# Quadruplet: [
+#     {"Aspect": "...", "VA": "4.33#5.12"}
+# ]
+# ----------------
+# Task 1 Raw:
+# "Quadruplet": [
+#   {
+#     "Aspect": "unit",
+#     "Category": "LAPTOP#DESIGN_FEATURES",
+#     "Opinion": "pretty",
+#     "VA": "7.12#7.12"
+#   }
+# ]
 
-'''
+# '''
 
 # --- Source and Destination File Paths ---
-ROOT = Path(__file__).resolve().parent.parent
-
 SRC_TASK1 = ROOT / "data" / "raw" / "task1"
 SRC_TASK2 = ROOT / "data" / "raw" / "task2"
 
@@ -119,16 +117,10 @@ TRAIN_FILES_2 = [
     SRC_TASK2 / "eng_restaurant_train_alltasks.jsonl",
 ]
 
-# Dev files with both restuarant and laptop domains
-DEV_FILES_1= [
-    SRC_TASK1 / "eng_laptop_dev_task1.jsonl",
-    SRC_TASK1 / "eng_restaurant_dev_task1.jsonl",
-]
 
-DEV_FILES_2= [
-    SRC_TASK2 / "eng_laptop_dev_task2.jsonl",
-    SRC_TASK2 / "eng_restaurant_dev_task2.jsonl",
-]
+ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 
 # ---- Helpers ----
@@ -175,60 +167,57 @@ def _normalize_quad_list(raw_quads) -> List[Dict[str, str]]:
 
 def normalize_task1_record(raw_rec: dict) -> dict:
     '''
-    Normalize a raw Task 1 record into:
+    Normalize a raw Task 1 record from and to below:
 
-        { "ID": str,
-          "Text": str,
+    Input (from *_train_alltasks.jsonl):
+        {
+          "ID": ...,
+          "Text": ...,
           "Quadruplet": [
-              { "Aspect": str,
-                "Category": str,
-                "Opinion": str,
-                "VA": str }
+              {"Aspect": "...", "Category": "...", "Opinion": "...", "VA": "V#A"},
+              ...
           ]
         }
 
+    Output:
+        {
+          "ID": ...,
+          "Text": ...,
+          "Aspect": [aspect_1, aspect_2, ...],
+          "VA_gold": {"V": float|None, "A": float|None},
+          "Quadruplet": [normalized quadruplet dicts...]
+        }
+
+    Notes:
+      - We keep all Quadruplets.
+      - We derive a single VA_gold by taking the VA from the first Quadruplet.
+        This matches the current regression model, which predicts one (V, A)
+        pair per sentence.
     For DimASR (Task 1), each record may contain multiple quadruplets,
     each with its own VA label.
-
-    Strategy is to use only the first quadruplet's VA as the regression target.
-
-    Logic:
-      - If the source already includes "Quadruplet", we clean it.
-      - Otherwise we try to build Quadruplet entries from "Aspect" and
-        any available VA information. Missing values are filled with
-        "NULL" so downstream code never has to guard against None.
     '''
-
     text = raw_rec.get("Text") or ""
-    quads = raw_rec.get("Quadruplet") or []
+    quads = _normalize_quad_list(raw_rec.get("Quadruplet"))
 
-    # aspects list (only Aspect strings)
-    aspects = []
-
+    # Extract aspect list
+    aspects: List[str] = []
     for quad in quads:
-        # Extract the Aspect field
-        aspect_value = quad.get("Aspect")
+        asp = quad.get("Aspect")
+        if asp and asp != "NULL":
+            aspects.append(asp)
 
-        # Skip if missing or NULL
-        if aspect_value is None:
-            continue
-        if aspect_value == "NULL":
-            continue
-        if aspect_value == "":
-            continue
+    # If there are quadruplets, get VA_gold
+    v = None
+    a = None
 
-        # Otherwise, keep it
-        aspects.append(aspect_value)
-
-    # extract VA from first quad (all quads share the same VA)
-    v = a = None
     if quads:
         va_str = quads[0].get("VA")
         if isinstance(va_str, str) and "#" in va_str:
             try:
                 v, a = map(float, va_str.split("#"))
             except Exception:
-                pass
+                v = None
+                a = None
 
     return {
         "ID": raw_rec.get("ID", ""),
@@ -239,14 +228,26 @@ def normalize_task1_record(raw_rec: dict) -> dict:
     }
 
 
-# ---- Normalization for Task 2 (DimASTE) ----
 def normalize_task2_record(raw_rec: Dict) -> Dict:
     '''
-    Normalize a raw Task 2 record into the same Quadruplet-based schema.
+    Normalize one Task 2 (DimASTE) training record.
 
-    Task 2 extracts (Aspect, Opinion, Category, VA) tuples from text.
-    The official files should already contain a 'Quadruplet'
-    field, but we still clean it to be safe.
+    Input (from *_train_alltasks.jsonl):
+        {
+          "ID": ...,
+          "Text": ...,
+          "Quadruplet": [...]
+        }
+
+    Output:
+        {
+          "ID": ...,
+          "Text": ...,
+          "Quadruplet": [normalized quadruplet dicts...]
+        }
+
+    We do NOT convert to Triplets here. We keep full Quadruplets so that
+    downstream Task 2 components can decide how to use them.
     '''
     raw_id = str(raw_rec.get("ID", ""))
     raw_text = raw_rec.get("Text") or raw_rec.get("text") or ""
@@ -257,12 +258,15 @@ def normalize_task2_record(raw_rec: Dict) -> Dict:
 
 
 # ---- Splits ----
-def build_task_splits(
+def build_task_split(
     in_files: Iterable[Path],
-    out_dir: Path,
     normalizer: Callable[[Dict], Dict],
-    task_name: str = "Task"
-):
+    out_dir: Path,
+    task_name: str,
+    seed: int = 42,
+    train_filename: str = "train.jsonl",
+    valid_filename: str = "valid.jsonl",
+) -> None:
     '''
     Build an 80/20 train–valid split for any DimABSA task.
 
@@ -275,22 +279,31 @@ def build_task_splits(
     out_dir : Path
         Output directory where train.jsonl and valid.jsonl will be written.
 
+    task_name: String to dictate which task to operate
+
+    seed: Int value for reproducability
+
     normalizer : Callable
         A function that converts one raw JSON object into the normalized
         project format:
             { "ID", "Text", "Quadruplet": [...], ... }
 
-    task_name : str
-        Name of the task (e.g., "Task1", "Task2") used only for printing messages.
+    train_filename: Strin for the trianing file in case it needs to change.
+
+    valid_filenaame: String for the training file for validation in case it needs to change.
     '''
 
     # Init all recs
     all_recs: List[Dict] = []
 
-    print(f"\n[{task_name}] Loading raw annotated records...")
+    print(f"[{task_name}] Loading raw annotated records...")
 
     # Loop the in files to run stream parser
     for src in in_files:
+        if not src.exists():
+            print(f"[{task_name}] [WARN] Missing source file: {src}")
+            continue
+
         print(f"[{task_name}] Reading: {src}")
 
         for raw in parse_stream_jsonl(src):
@@ -300,33 +313,31 @@ def build_task_splits(
 
     print(f"[{task_name}] Loaded {len(all_recs)} total records.")
 
-    if not all_recs:
-        print(f"[{task_name}] ERROR: No records found. Check input files.")
+    rec_total = len(all_recs)
+    if rec_total == 0:
+        print(f"[{task_name}] [ERROR] No records loaded; aborting split.")
         return
 
     # Shuffle the deck
+    random.seed(seed)
     random.shuffle(all_recs)
 
     # Split 80/20
-    n = len(all_recs)
-    split_index = int(n * 0.80)
+    split_idx = int(rec_total * 0.8)
 
-    train_recs = all_recs[:split_index]
-    valid_recs = all_recs[split_index:]
+    train_recs = all_recs[:split_idx]
+    valid_recs = all_recs[split_idx:]
 
-    print(f"[{task_name}] Train split: {len(train_recs)} records")
-    print(f"[{task_name}] Valid split: {len(valid_recs)} records")
+    print(f"[{task_name}] Total records: {rec_total}")
+    print(f"[{task_name}] Train: {len(train_recs)} | Valid: {len(valid_recs)}")
 
     # Write out
-    train_path = out_dir / "train.jsonl"
-    valid_path = out_dir / "valid.jsonl"
-
-    write_jsonl(train_recs, train_path)
-    write_jsonl(valid_recs, valid_path)
+    write_jsonl(train_recs, out_dir / train_filename)
+    write_jsonl(valid_recs, out_dir / valid_filename)
 
     print(f"[{task_name}] Wrote:")
-    print(f"   - {train_path}")
-    print(f"   - {valid_path}")
+    print(f"   - {train_filename}")
+    print(f"   - {valid_filename}")
     print(f"[{task_name}] Completed train/valid split.\n")
 
 
@@ -334,22 +345,24 @@ def main():
     print("Preparing processed datasets for DimABSA 2026 (Task 1 + Task 2)...")
 
     # Task 1
-    build_task_splits(
+    build_task_split(
         in_files=TRAIN_FILES_1,
-        out_dir=OUT_TASK1,
         normalizer=normalize_task1_record,
-        task_name="Task1"
+        out_dir=OUT_TASK1,
+        task_name="Task1-DimASR",
     )
+
+    print()
 
     # Task 2
-    build_task_splits(
+    build_task_split(
         in_files=TRAIN_FILES_2,
-        out_dir=OUT_TASK2,
         normalizer=normalize_task2_record,
-        task_name="Task2"
+        out_dir=OUT_TASK2,
+        task_name="Task2-DimASTE",
     )
 
-    print("Finished.")
+    print("\n[OK] Finished building processed train/valid splits.")
 
 
 # Entry point to process our filesets
