@@ -118,8 +118,6 @@ PY
 Run tests
 ```
 pytest -q    # should pass
-python scripts/train.py --epochs 3
-python scripts/eval.py --ckpt experiments/checkpoints/simple.pt
 ```
 If train.py prints a few epochs and saves experiments/checkpoints/simple.pt, you’re good.
 
@@ -128,8 +126,8 @@ Team Workflow
 conda activate nlp5290
 ```
  - Develop in modules
- - Put real code in src/dimabsa/ (e.g., dataset.py, model.py, train_loop.py).
- - Keep scripts/ for CLIs that call into the modules (e.g., scripts/train.py, scripts/eval.py).
+ - Put real code in src/dimabsa/
+ - Keep scripts/ for CLIs that call into the modules (scripts/train.py, scripts/eval.py).
 
 Stage the dataset (copies into /data/raw/)
 ```
@@ -138,7 +136,7 @@ python scripts/stage_data.py
 
 Prepare the processed datasets
 ```
-python -m scripts/prepare_datasets.py
+python -m scripts.prepare_datasets
 ```
 
 This generates:
@@ -149,14 +147,32 @@ data/processed/task2/train.jsonl
 data/processed/task2/valid.jsonl
 ```
 
+Make Predictions:
+```
+python -m scripts.predict_task1 \
+    --model-dir experiments/checkpoints/task1/bert_final \
+    --input data/raw/task1/eng_laptop_dev_task1.jsonl \
+    --output predictions/task1_dev.jsonl
+```
+
 Training:
 You now train per-task:
 ```
-python scripts/train.py --task task1 --epochs 3
+python -m scripts.train_task1 \
+    --model bert-base-uncased \
+    --epochs 3 \
+    --batch-size 8 \
+    --lr 5e-5 \
+    --out-dir experiments/checkpoints
 ```
 
 ```
-python scripts/train.py --task task2 --epochs 3
+python -m scripts.train_task2 \
+    --model bert-base-uncased \
+    --epochs 3 \
+    --batch-size 8 \
+    --lr 5e-5 \
+    --out-dir experiments/checkpoints
 ```
 
 Models are saved under:

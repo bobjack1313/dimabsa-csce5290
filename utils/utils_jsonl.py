@@ -110,3 +110,33 @@ def write_jsonl(samples: list[dict], out_file: Path) -> None:
 
     # Display confirmation
     print(f"Wrote {out_file}  ({len(samples)} records)")
+
+
+def load_jsonl(path: Path):
+    with open(path, "r", encoding="utf-8") as file:
+        for line in file:
+            if line.strip():
+                yield json.loads(line)
+
+
+def save_jsonl(rows, path: Path):
+    '''
+    Writes the jsonl to file.
+    '''
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    with open(path, "w", encoding="utf-8") as file:
+        for row in rows:
+            file.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+
+def format_va(v, a):
+    '''
+    Convert floats for'V#A' with rounding and clipping.
+    '''
+    v = max(1.00, min(9.00, float(v)))
+    a = max(1.00, min(9.00, float(a)))
+
+    rval = f"{v:.2f}#{a:.2f}"
+    # print(rval_)
+    return rval
