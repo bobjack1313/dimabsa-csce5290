@@ -153,6 +153,15 @@ python -m scripts.predict_task1 \
     --model-dir experiments/checkpoints/task1/bert_final \
     --input data/raw/task1/eng_laptop_dev_task1.jsonl \
     --output predictions/task1_dev.jsonl
+
+python -m scripts.predict_task1 \
+  --input data/raw/task1/eng_restaurant_dev_task1.jsonl \
+  --output predictions/task1_restaurant_dev.jsonl \
+  --model-dir experiments/checkpoints/task1/bert_final
+
+cat predictions/task1_laptop_dev.jsonl predictions/task1_restaurant_dev.jsonl \
+    > predictions/task1_dev_all.jsonl
+
 ```
 
 Training:
@@ -183,7 +192,9 @@ experiments/checkpoints/task2/bert_final/
 
 Evaluation:
 ```
-python scripts/eval.py --task task1
+python scripts/eval.py \
+    --model-dir experiments/checkpoints/task1/bert_final \
+    --gold data/processed/task1/valid.jsonl
 ```
 
 ```
