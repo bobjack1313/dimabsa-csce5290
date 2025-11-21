@@ -167,12 +167,11 @@ cat predictions/task1_laptop_dev.jsonl predictions/task1_restaurant_dev.jsonl \
 Training:
 You now train per-task:
 ```
-python -m scripts.train_task1 \
-    --model bert-base-uncased \
-    --epochs 3 \
-    --batch-size 8 \
-    --lr 5e-5 \
-    --out-dir experiments/checkpoints
+#BERT
+python -m scripts.train_task1 --arch bert --model bert-base-uncased
+
+# GPT-2
+python -m scripts.train_task1 --arch gpt2
 ```
 
 ```
@@ -186,18 +185,23 @@ python -m scripts.train_task2 \
 
 Models are saved under:
 ```
-experiments/checkpoints/task1/bert_final/
-experiments/checkpoints/task2/bert_final/
+experiments/checkpoints/task1/task1_bert
+experiments/checkpoints/task1/task1_gpt2
+experiments/checkpoints/task2/task2_bert
 ```
 
 Evaluation:
 ```
-python scripts/eval.py \
-    --model-dir experiments/checkpoints/task1/bert_final \
+python -m scripts.eval \
+    --model-dir experiments/checkpoints/task1/task1_bert \
+    --gold data/processed/task1/valid.jsonl
+
+python -m scripts.eval \
+    --model-dir experiments/checkpoints/task1/task1_gpt2 \
     --gold data/processed/task1/valid.jsonl
 ```
 
 ```
-python scripts/eval.py --task task2
+python -m scripts.eval --task task2
 ```
 

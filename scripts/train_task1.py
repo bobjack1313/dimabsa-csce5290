@@ -30,9 +30,14 @@ from transformers import (
 # ---- CLI Setup ----
 def parse_args():
     parser = argparse.ArgumentParser(
-        description = "Train DimABSA Task 1 (DimASR) model"
+        description = "Train Task 1 (DimASR) model"
     )
-    p.add_argument("--model", type=str, default="bert-base-uncased")
+
+    parser.add_argument(
+        "--arch",
+        choices=["bert", "gpt2"],
+        default="bert"
+    )
 
     parser.add_argument(
         "--model",
@@ -86,7 +91,7 @@ def load_task1():
             for line in file:
                 example = json.loads(line)
 
-                # VA_gold → labels
+                # VA_gold into labels
                 gold = example.get("VA_gold", {})
                 v, a = gold.get("V"), gold.get("A")
                 if v is None or a is None:
@@ -99,7 +104,7 @@ def load_task1():
         splits[split] = Dataset.from_list(rows)
 
     if not splits:
-        raise RuntimeError("No task1 dataset found under data/processed/task1/")
+        raise RuntimeError("Missing processed Task1 data")
 
     return DatasetDict(splits)
 
@@ -119,25 +124,39 @@ def build_preprocess(tokenizer):
     return func
 
 
-
 def main():
+    # Argument setup
     args = parse_args()
 
-    print("[Task1] Loading dataset...")
+    print("[Task1] Loading dataset…")
     dataset = load_task1()
 
-    print("[Task1] Loading tokenizer/model...")
-    tokenizer = AutoTokenizer.from_pretrained(args.model)
+    # Model Selection
+    if args.arch == "bert":
+        model_name = args.model
+    else:
+        model_name = "gpt2"
+
+    print(f"[Task1] Using model: {model_name}")
+
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+
+    # GPT-2 needs pad token (it doesnt have one by default)
+    if args.arch == "gpt2" and tokenizer.pad_token is None:
+        tokenizer.add_special_tokens({"pad_token": tokenizer.eos_token})
 
     preprocess = build_preprocess(tokenizer)
     dataset = dataset.map(preprocess, batched=True)
 
-    # Configure regression head (2 outputs: V and A)
+    # Build regression model
     model = AutoModelForSequenceClassification.from_pretrained(
-        args.model,
+        model_name,
         num_labels=2,
         problem_type="regression",
     )
+
+    # Resize for GPT-2 padding token
+    model.resize_token_embeddings(len(tokenizer))
 
     # Training Args
     train_args = TrainingArguments(
@@ -161,19 +180,21 @@ def main():
         tokenizer=tokenizer,
     )
 
-    print("[Task1] Training...")
+    print("[Task1] Training…")
     trainer.train()
 
-    save_path = args.out_dir / "bert_final"
-    save_path.mkdir(parents=True, exist_ok=True)
+    # Saving output under task1 - separate locations
+    out = args.out_dir / ("task1_gpt2" if args.arch == "gpt2" else "task1_bert")
+    out.mkdir(parents=True, exist_ok=True)
 
-    print(f"[Task1] Saving final model to {save_path}")
-    model.save_pretrained(save_path)
-    tokenizer.save_pretrained(save_path)
+    model.save_pretrained(out)
+    tokenizer.save_pretrained(out)
 
+    print(f"[Task1] Saved final model: {out}")
     print("[Task1] Done.")
 
 
 # Main entry point
 if __name__ == "__main__":
     main()
+

@@ -30,6 +30,12 @@ from pathlib import Path
 import torch
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 
+import sys
+
+# Check that project root is on PYTHONPATH
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.append(str(ROOT))
+
 from utils.utils_jsonl import load_jsonl,save_jsonl,format_va
 
 
