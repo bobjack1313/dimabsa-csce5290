@@ -147,23 +147,6 @@ data/processed/task2/train.jsonl
 data/processed/task2/valid.jsonl
 ```
 
-Make Predictions:
-```
-python -m scripts.predict_task1 \
-    --model-dir experiments/checkpoints/task1/bert_final \
-    --input data/raw/task1/eng_laptop_dev_task1.jsonl \
-    --output predictions/task1_dev.jsonl
-
-python -m scripts.predict_task1 \
-  --input data/raw/task1/eng_restaurant_dev_task1.jsonl \
-  --output predictions/task1_restaurant_dev.jsonl \
-  --model-dir experiments/checkpoints/task1/bert_final
-
-cat predictions/task1_laptop_dev.jsonl predictions/task1_restaurant_dev.jsonl \
-    > predictions/task1_dev_all.jsonl
-
-```
-
 Training:
 You now train per-task:
 ```
@@ -188,6 +171,23 @@ Models are saved under:
 experiments/checkpoints/task1/task1_bert
 experiments/checkpoints/task1/task1_gpt2
 experiments/checkpoints/task2/task2_bert
+```
+
+Make Predictions:
+```
+python -m scripts.predict_task1 \
+    --model-dir experiments/checkpoints/task1/bert_final \
+    --input data/raw/task1/eng_laptop_dev_task1.jsonl \
+    --output predictions/task1_dev.jsonl
+
+python -m scripts.predict_task1 \
+  --input data/raw/task1/eng_restaurant_dev_task1.jsonl \
+  --output predictions/task1_restaurant_dev.jsonl \
+  --model-dir experiments/checkpoints/task1/bert_final
+
+cat predictions/task1_laptop_dev.jsonl predictions/task1_restaurant_dev.jsonl \
+    > predictions/task1_dev_all.jsonl
+
 ```
 
 Evaluation:

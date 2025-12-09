@@ -73,6 +73,38 @@ def parse_args():
         help="Save location for Task 1 checkpoints",
     )
 
+    # Additional args for hypertuning
+    parser.add_argument(
+        "--weight-decay",
+        type=float,
+        default=0.01
+    )
+
+    parser.add_argument(
+        "--warmup-ratio",
+        type=float,
+        default=0.0
+    )
+
+    parser.add_argument(
+        "--scheduler",
+        type=str,
+        default="linear",
+        choices=["linear", "cosine"]
+    )
+
+    parser.add_argument(
+        "--max-grad-norm",
+        type=float,
+        default=1.0
+    )
+
+    parser.add_argument(
+        "--max-length",
+        type=int,
+        default=128
+    )
+
     return parser.parse_args()
 
 
@@ -110,14 +142,14 @@ def load_task1():
 
 
 # ----Tokenizing ----
-def build_preprocess(tokenizer):
+def build_preprocess(tokenizer, max_length):
 
     def func(batch):
         enc = tokenizer(
             batch["Text"],
             truncation=True,
             padding="max_length",
-            max_length=128,
+            max_length=max_length,
         )
         return enc
 
@@ -145,7 +177,8 @@ def main():
     if args.arch == "gpt2" and tokenizer.pad_token is None:
         tokenizer.add_special_tokens({"pad_token": tokenizer.eos_token})
 
-    preprocess = build_preprocess(tokenizer)
+    max_length = args.max_length
+    preprocess = build_preprocess(tokenizer, max_length)
     dataset = dataset.map(preprocess, batched=True)
 
     # Build regression model
@@ -163,10 +196,16 @@ def main():
         output_dir=str(args.out_dir),
         eval_strategy="epoch",
         do_eval=True,
+
+        # Hyperparameters from CLI
         learning_rate=args.lr,
         per_device_train_batch_size=args.batch_size,
         num_train_epochs=args.epochs,
-        weight_decay=0.01,
+        weight_decay=args.weight_decay,
+        warmup_ratio=args.warmup_ratio,
+        lr_scheduler_type=args.scheduler,
+        max_grad_norm=args.max_grad_norm,
+
         save_total_limit=2,
         logging_dir="logs",
         logging_steps=50,

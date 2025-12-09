@@ -69,7 +69,10 @@ def main():
     args = ap.parse_args()
 
     # Load model and tokenizer
-    tokenizer = AutoTokenizer.from_pretrained(args.model_dir)
+    # Always load tokenizer from the original pretrained model
+    tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
+
+    # tokenizer = AutoTokenizer.from_pretrained(args.model_dir)
     model = AutoModelForSequenceClassification.from_pretrained(args.model_dir)
     model.eval()
 
